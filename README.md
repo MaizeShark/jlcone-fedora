@@ -5,7 +5,7 @@ Unofficial dnf repository that repackages the official JLCONE `.deb` as a signed
 It is checked daily and only rebuilt when JLCPCB publishes a new version.
 
 ```sh
-sudo curl -o /etc/yum.repos.d/jlcone.repo https://maizeshark.github.io/jlcone-fedora/jlcone.repo
+sudo curl -fLo /etc/yum.repos.d/jlcone.repo https://maizeshark.github.io/jlcone-fedora/jlcone.repo
 sudo dnf install jlcone
 ```
 
