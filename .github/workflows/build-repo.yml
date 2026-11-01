@@ -14,7 +14,7 @@ on:
     paths: [build-rpm.sh, .github/workflows/build-repo.yml, RPM-GPG-KEY-jlcone]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -32,7 +32,7 @@ jobs:
       SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
     steps:
       - name: Install tooling
-        run: dnf install -y rpm-build rpm-sign createrepo_c gnupg2 jq binutils curl xz tar findutils
+        run: dnf install -y gh rpm-build rpm-sign createrepo_c gnupg2 jq binutils curl xz tar findutils
 
       - uses: actions/checkout@v4
 
@@ -81,6 +81,21 @@ jobs:
           gpgkey=$SITE_URL/RPM-GPG-KEY-jlcone
           REPO
           sed -i 's/^ *//' site/jlcone.repo
+
+      - name: Publish GitHub release
+        if: steps.check.outputs.build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(cat site/version)
+          rpm=$(ls site/x86_64/*.rpm)
+          if gh release view "v$v" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "v$v" "$rpm" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$v" "$rpm" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "JLCONE $v" \
+              --notes "Signed RPM repackaged from the official JLCONE $v .deb. Install via the dnf repo (see README) or download below."
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         if: steps.check.outputs.build == 'true'
