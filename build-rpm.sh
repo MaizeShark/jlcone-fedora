@@ -19,6 +19,9 @@ resp=$(curl -fsS -X POST -H 'content-type: application/json' \
   -d '{"platform":"linux","versionCode":"0"}' "$API")
 url=$(jq -er '.data.updateUrl' <<<"$resp")
 version=$(jq -er '.data.versionCode' <<<"$resp")
+# Upstream release notes -> RPM changelog (one "- " bullet per line, % escaped for rpm)
+changes=$(jq -r '.data.updateContent // empty' <<<"$resp" | sed -e 's/%/%%/g' -e 's/^[[:space:]]*//' -e '/^$/d' -e 's/^/- /')
+[ -n "$changes" ] || changes="- Repackaged from official .deb"
 echo "   $version -> $url"
 
 echo ">> Downloading"
@@ -67,7 +70,7 @@ cp -a $root/. %{buildroot}/
 
 %changelog
 * $(LC_ALL=C date '+%a %b %d %Y') Repack <noreply@localhost> - $version-1
-- Repackaged from official .deb
+$changes
 EOF
 
 echo ">> Building RPM"
