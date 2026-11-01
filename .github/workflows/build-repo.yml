@@ -1,0 +1,99 @@
+name: Build RPM repo
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # daily; only builds when JLCPCB published a new version
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if the published version is current"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: [build-rpm.sh, .github/workflows/build-repo.yml, RPM-GPG-KEY-jlcone]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    env:
+      SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+    steps:
+      - name: Install tooling
+        run: dnf install -y rpm-build rpm-sign createrepo_c gnupg2 jq binutils curl xz tar findutils
+
+      - uses: actions/checkout@v4
+
+      - name: Check for a new upstream version
+        id: check
+        run: |
+          upstream=$(curl -fsS -X POST -H 'content-type: application/json' \
+            -d '{"platform":"linux","versionCode":"0"}' \
+            https://jlcone.com/api/overseas-core-platform/baseDataConfig/checkUpdate | jq -er '.data.versionCode')
+          published=$(curl -fsS "$SITE_URL/version" 2>/dev/null || echo none)
+          echo "upstream=$upstream published=$published"
+          if [ "$upstream" != "$published" ] || [ "${{ github.event_name }}" = push ] || [ "${{ inputs.force }}" = true ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date ($published); nothing to do."
+          fi
+
+      - name: Import signing key
+        if: steps.check.outputs.build == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          [ -n "$GPG_PRIVATE_KEY" ] || { echo "GPG_PRIVATE_KEY secret is not set" >&2; exit 1; }
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          fpr=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+          echo "GPG_FPR=$fpr" >> "$GITHUB_ENV"
+
+      - name: Build, sign and index
+        if: steps.check.outputs.build == 'true'
+        run: |
+          mkdir -p site
+          ./build-rpm.sh site
+          rpmsign --define "_gpg_name $GPG_FPR" --addsign site/x86_64/*.rpm
+          createrepo_c site
+          gpg --batch --yes --armor --detach-sign -u "$GPG_FPR" site/repodata/repomd.xml
+          cp RPM-GPG-KEY-jlcone site/
+          rpm -q jlcone --qf '%{VERSION}\n' -p site/x86_64/*.rpm > site/version
+          cat > site/jlcone.repo <<REPO
+          [jlcone]
+          name=JLCONE (unofficial repack)
+          baseurl=$SITE_URL/
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=$SITE_URL/RPM-GPG-KEY-jlcone
+          REPO
+          sed -i 's/^ *//' site/jlcone.repo
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.check.outputs.build == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
