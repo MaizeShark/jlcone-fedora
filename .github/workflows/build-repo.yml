@@ -89,12 +89,19 @@ jobs:
         run: |
           v=$(cat site/version)
           rpm=$(ls site/x86_64/*.rpm)
+          # Release notes: the changelog text JLCPCB publishes with the update
+          changes=$(curl -fsS -X POST -H 'content-type: application/json' \
+            -d '{"platform":"linux","versionCode":"0"}' \
+            https://jlcone.com/api/overseas-core-platform/baseDataConfig/checkUpdate \
+            | jq -r '.data.updateContent // empty')
+          printf '%s\n\n---\nSigned RPM repackaged from the official JLCONE %s .deb. Install via the dnf repo (see README) or download below.\n' \
+            "${changes:-No release notes provided.}" "$v" > notes.md
           if gh release view "v$v" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "v$v" "$rpm" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "v$v" --notes-file notes.md --repo "$GITHUB_REPOSITORY"
           else
             gh release create "v$v" "$rpm" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "JLCONE $v" \
-              --notes "Signed RPM repackaged from the official JLCONE $v .deb. Install via the dnf repo (see README) or download below."
+              --title "JLCONE $v" --notes-file notes.md
           fi
 
       - uses: actions/upload-pages-artifact@v3
