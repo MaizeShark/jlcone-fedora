@@ -70,7 +70,7 @@ jobs:
           createrepo_c site
           gpg --batch --yes --armor --detach-sign -u "$GPG_FPR" site/repodata/repomd.xml
           cp RPM-GPG-KEY-jlcone site/
-          rpm -q jlcone --qf '%{VERSION}\n' -p site/x86_64/*.rpm > site/version
+          rpm -qp --qf '%{VERSION}\n' site/x86_64/*.rpm > site/version
           cat > site/jlcone.repo <<REPO
           [jlcone]
           name=JLCONE (unofficial repack)
