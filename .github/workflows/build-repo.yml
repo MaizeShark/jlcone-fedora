@@ -42,7 +42,7 @@ jobs:
           upstream=$(curl -fsS -X POST -H 'content-type: application/json' \
             -d '{"platform":"linux","versionCode":"0"}' \
             https://jlcone.com/api/overseas-core-platform/baseDataConfig/checkUpdate | jq -er '.data.versionCode')
-          published=$(curl -fsS "$SITE_URL/version" 2>/dev/null || echo none)
+          published=$(curl -fsSL "$SITE_URL/version" 2>/dev/null || echo none)
           echo "upstream=$upstream published=$published"
           if [ "$upstream" != "$published" ] || [ "${{ github.event_name }}" = push ] || [ "${{ inputs.force }}" = true ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
